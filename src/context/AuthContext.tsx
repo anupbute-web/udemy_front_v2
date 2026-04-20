@@ -3,18 +3,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
-// TypeScript interfaces
 interface User {
   id: string;
   name: string;
   email: string;
+  role: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (token: string, userData: User) => void;
-  logout: () => void;
+  login: (userData: User) => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -22,44 +21,46 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const router = useRouter();
 
-  // Page load hone pe localStorage se token nikalna
+  // Page load hone pe sirf user data nikalenge, token nahi
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
+    if (storedUser) {
       setUser(JSON.parse(storedUser));
     }
   }, []);
 
-  const login = (newToken: string, userData: User) => {
-    setToken(newToken);
+  // Login me ab token parameter nahi chahiye
+  const login = (userData: User) => {
     setUser(userData);
-    localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(userData));
-    router.push("/"); // Login success ke baad home pe bhej do
+    router.push("/dashboard");
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
+  // Logout ab API call karega cookie clear karne ke liye
+  const logout = async () => {
+    try {
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include", // Cookie bhejne ke liye
+      });
+    } catch (err) {
+      console.error("Logout API failed", err);
+    } finally {
+      setUser(null);
+      localStorage.removeItem("user");
+      router.push("/login");
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-// Custom hook banaya taaki kisi bhi page me aaram se use kar sakein
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within an AuthProvider");
